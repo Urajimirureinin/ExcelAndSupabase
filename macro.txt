@@ -1,0 +1,176 @@
+Sub ExportInmSheetAsUTF8AndRunNodeScript()
+    Dim ws As Worksheet
+    Dim tempFile As String
+    Dim finalFile As String
+    Dim fso As Object
+    Dim txtStream As Object
+    Dim cell As Range
+    Dim row As Range
+    Dim line As String
+    Dim shell As Object
+    Dim cmd As String
+    Dim i As Long, j As Long, lastRow As Long, lastCol As Long
+    Dim response As VbMsgBoxResult
+    Dim csvContent As String
+
+    ' === 0. 処理前の確認 ===
+    response = MsgBox("inmシートの内容をUTF-8でinm.csvに保存し、" & vbCrLf & _
+                      "Node.jsスクリプト（supabase_input.js）を実行しますか？", _
+                      vbYesNo + vbQuestion, "確認")
+
+    If response = vbNo Then
+        MsgBox "処理をキャンセルしました。", vbInformation
+        Exit Sub
+    End If
+
+    ' === 1. シートを取得 ===
+    On Error Resume Next
+    Set ws = ActiveSheet
+    On Error GoTo 0
+
+    If ws Is Nothing Then
+        MsgBox "シートが見つかりません。", vbCritical
+        Exit Sub
+    End If
+
+    finalFile = ThisWorkbook.Path & "\inm.csv"
+
+    ' === 2. UTF-8でCSVを保存 ===
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    Set txtStream = CreateObject("ADODB.Stream")
+
+    lastRow = ws.cells(ws.Rows.Count, 1).End(xlUp).row
+    lastCol = ws.cells(1, ws.Columns.Count).End(xlToLeft).Column
+    csvContent = ""
+
+    For i = 1 To lastRow
+        line = ""
+        For j = 1 To lastCol
+            line = line & """" & Replace(ws.cells(i, j).Text, """", """""") & """"
+            If j < lastCol Then
+                line = line & ","
+            End If
+        Next j
+        csvContent = csvContent & line & vbCrLf
+    Next i
+
+    With txtStream
+        .Charset = "UTF-8"
+        .Open
+        .WriteText csvContent
+        .SaveToFile finalFile, 2 ' 2 = 上書き保存
+        .Close
+    End With
+
+    ' === 3. Node.jsスクリプト実行 ===
+    Set shell = CreateObject("WScript.Shell")
+    cmd = "cmd /c node --env-file=.env supabase_input.js"
+    shell.CurrentDirectory = ThisWorkbook.Path
+    shell.Run cmd, 1, True
+
+    MsgBox "UTF-8でCSVを保存し、Node.jsスクリプトを実行しました。", vbInformation
+End Sub
+
+Sub RunNodeAndImportCSVToInmSheet()
+    Dim shell As Object
+    Dim cmd As String
+    Dim response As VbMsgBoxResult
+    Dim fso As Object
+    Dim txtStream As Object
+    Dim csvPath As String
+    Dim fileContent As String
+    Dim lines() As String
+    Dim cells() As String
+    Dim i As Long, j As Long
+    Dim ws As Worksheet
+
+    ' === 0. 処理前の確認 ===
+    response = MsgBox("Node.jsスクリプト（supabase_output.js）を実行し、" & vbCrLf & _
+                      "その出力ファイル（inm.csv）を 'inm' シートに読み込みますか？", _
+                      vbYesNo + vbQuestion, "確認")
+
+    If response = vbNo Then
+        MsgBox "処理をキャンセルしました。", vbInformation
+        Exit Sub
+    End If
+
+    ' === 1. Node.jsスクリプトを実行 ===
+    Set shell = CreateObject("WScript.Shell")
+    cmd = "cmd /c node --env-file=.env supabase_output.js"
+    shell.CurrentDirectory = ThisWorkbook.Path
+    shell.Run cmd, 1, True
+
+    ' === 2. inm.csv を UTF-8 で読み込み ===
+    csvPath = ThisWorkbook.Path & "\inm.csv"
+
+    If Dir(csvPath) = "" Then
+        MsgBox "inm.csv が見つかりません。Node.jsスクリプトの出力を確認してください。", vbCritical
+        Exit Sub
+    End If
+
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    Set txtStream = CreateObject("ADODB.Stream")
+
+    With txtStream
+        .Charset = "UTF-8"
+        .Open
+        .LoadFromFile csvPath
+        fileContent = .ReadText
+        .Close
+    End With
+
+    ' === 改行コードの正規化（vbCrLf → vbLf） ===
+    fileContent = Replace(fileContent, vbCrLf, vbLf)
+    lines = Split(fileContent, vbLf)
+
+    ' === 3. シートに書き込む ===
+    On Error Resume Next
+    Set ws = ActiveSheet
+    On Error GoTo 0
+
+    If ws Is Nothing Then
+        MsgBox "シートが見つかりません。", vbCritical
+        Exit Sub
+    End If
+
+    ws.cells.ClearContents
+
+    For i = 0 To UBound(lines)
+        If Trim(lines(i)) <> "" Then
+            cells = SplitCSVLine(lines(i))
+            For j = 0 To UBound(cells)
+                ws.cells(i + 1, j + 1).Value = cells(j)
+            Next j
+        End If
+    Next i
+
+    MsgBox "Node.jsスクリプトを実行し、CSVを正しく改行して読み込みました。", vbInformation
+End Sub
+Function SplitCSVLine(line As String) As Variant
+    Dim matches As Object
+    Dim regex As Object
+    Set regex = CreateObject("VBScript.RegExp")
+
+    With regex
+        .Pattern = """([^""]|"""")*""|[^,]+"
+        .Global = True
+    End With
+
+    Set matches = regex.Execute(line)
+
+    Dim result() As String
+    ReDim result(matches.Count - 1)
+
+    Dim i As Long
+    For i = 0 To matches.Count - 1
+        Dim s As String
+        s = matches(i).Value
+        If Left(s, 1) = """" Then
+            s = Mid(s, 2, Len(s) - 2)
+            s = Replace(s, """""", """")
+        End If
+        result(i) = s
+    Next i
+
+    SplitCSVLine = result
+End Function

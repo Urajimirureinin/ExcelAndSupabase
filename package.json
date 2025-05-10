@@ -1,0 +1,31 @@
+{
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.4",
+    "csv-parser": "^3.2.0",
+    "dotenv": "^16.5.0",
+    "fast-csv": "^5.0.2",
+    "pg": "^8.15.6",
+    "postgres": "^3.4.5"
+  },
+  "name": "database",
+  "version": "1.0.0",
+  "description": "practise of database operating",
+  "main": "main.js",
+  "devDependencies": {
+    "@babel/core": "^7.27.1",
+    "@babel/preset-env": "^7.27.2",
+    "@babel/preset-react": "^7.27.1",
+    "babel-loader": "^10.0.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "webpack": "^5.99.8",
+    "webpack-cli": "^6.0.1",
+    "webpack-dev-server": "^5.2.1"
+  },
+  "scripts": {
+    "start": "webpack serve",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "tanaka",
+  "license": "ISC"
+}
